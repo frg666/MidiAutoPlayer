@@ -1,0 +1,60 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0'
+
+      - name: Restore dependencies
+        run: dotnet restore MidiAutoPlayer/MidiAutoPlayer.csproj
+
+      - name: Build Release
+        run: dotnet publish MidiAutoPlayer/MidiAutoPlayer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o ./publish
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MidiAutoPlayer-win-x64
+          path: ./publish
+          retention-days: 5
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MidiAutoPlayer-win-x64
+          path: ./MidiAutoPlayer
+
+      - name: Create ZIP
+        run: |
+          cd MidiAutoPlayer
+          zip -r ../MidiAutoPlayer-${{ github.ref_name }}-win-x64.zip .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: MidiAutoPlayer-${{ github.ref_name }}-win-x64.zip
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
