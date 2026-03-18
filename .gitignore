@@ -1,0 +1,38 @@
+# Build results
+bin/
+obj/
+out/
+Publish/
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.suo.user
+*.userosscache
+
+# Rider
+.idea/
+
+# NuGet
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Logs
+*.log
+
+# Settings files
+settings.txt
+
+# OS generated files
+.DS_Store
+Thumbs.db
