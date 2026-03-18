@@ -21,10 +21,10 @@ jobs:
           dotnet-version: '8.0'
 
       - name: Restore dependencies
-        run: dotnet restore MidiAutoPlayer/MidiAutoPlayer.csproj
+        run: dotnet restore ./MidiAutoPlayer.csproj
 
       - name: Build Release
-        run: dotnet publish MidiAutoPlayer/MidiAutoPlayer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o ./publish
+        run: dotnet publish ./MidiAutoPlayer.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o ./publish
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
