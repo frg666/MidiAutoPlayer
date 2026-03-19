@@ -1,5 +1,6 @@
 # MidiAutoPlayer
 ![License: GPL-3.0 NC](https://img.shields.io/badge/License-GPL--3.0--NC-blue)
+
 一个用于原神自动弹琴的桌面应用程序。
 
 ## 功能特点
