@@ -37,6 +37,7 @@ jobs:
           retention-days: 5
 
   release:
+    if: github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
 
