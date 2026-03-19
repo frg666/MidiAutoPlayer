@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MidiAutoPlayer.Core.Native;
+using MidiAutoPlayer.Core.MusicGame;
 
 namespace MidiAutoPlayer.Core.Midi
 {
@@ -31,6 +32,33 @@ namespace MidiAutoPlayer.Core.Midi
             { 81,VirtualKey.VK_Y},
             { 83,VirtualKey.VK_U},
 
+        };
+
+        internal static Dictionary<int, VirtualKey> FrenchHornNoteToVisualKeyDictionary = new Dictionary<int, VirtualKey>
+        {
+            { 48, VirtualKey.VK_Q },
+            { 50, VirtualKey.VK_W },
+            { 52, VirtualKey.VK_E },
+            { 53, VirtualKey.VK_R },
+            { 55, VirtualKey.VK_T },
+            { 57, VirtualKey.VK_Y },
+            { 59, VirtualKey.VK_U },
+
+            { 60, VirtualKey.VK_A },
+            { 62, VirtualKey.VK_S },
+            { 64, VirtualKey.VK_D },
+            { 65, VirtualKey.VK_F },
+            { 67, VirtualKey.VK_G },
+            { 69, VirtualKey.VK_H },
+            { 71, VirtualKey.VK_J },
+
+            { 72, VirtualKey.VK_Q },
+            { 74, VirtualKey.VK_W },
+            { 76, VirtualKey.VK_E },
+            { 77, VirtualKey.VK_R },
+            { 79, VirtualKey.VK_T },
+            { 81, VirtualKey.VK_Y },
+            { 83, VirtualKey.VK_U },
         };
 
         internal static Dictionary<int, string> NoteToCharDictionary = new Dictionary<int, string>

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Timers;
 using System.Windows.Interop;
 using MidiAutoPlayer.Core.Midi;
+using MidiAutoPlayer.Core.MusicGame;
 
 namespace MidiAutoPlayer.ViewModel
 {
@@ -43,13 +44,14 @@ namespace MidiAutoPlayer.ViewModel
                 _SelectedMidiFile = value;
                 if (value != null && MidiPlayer != null)
                 {
-                    if (_noteLevelSettings.TryGetValue(value.Name, out int savedLevel))
+                    var key = $"{value.Name}_{(int)InstrumentType}";
+                    if (_noteLevelSettings.TryGetValue(key, out int savedLevel))
                     {
-                        value.RefreshTracksByNoteLevel(savedLevel);
+                        value.RefreshTracksByNoteLevel(savedLevel, InstrumentType);
                     }
                     else
                     {
-                        value.RefreshTracksByNoteLevel(0);
+                        value.RefreshTracksByNoteLevel(0, InstrumentType);
                     }
                     OnPropertyChanged("NoteLevel");
                 }
@@ -111,6 +113,23 @@ namespace MidiAutoPlayer.ViewModel
             {
                 _TextBlock_Color = value;
                 OnPropertyChanged();
+            }
+        }
+
+        private InstrumentType _InstrumentType = InstrumentType.Piano;
+        public InstrumentType InstrumentType
+        {
+            get { return _InstrumentType; }
+            set
+            {
+                _InstrumentType = value;
+                OnPropertyChanged();
+                if (MidiPlayer != null)
+                {
+                    MidiPlayer.InstrumentType = value;
+                }
+                RefreshCurrentFileNoteLevel();
+                SaveSettings();
             }
         }
 
@@ -190,6 +209,22 @@ namespace MidiAutoPlayer.ViewModel
             }
         }
 
+        public void RefreshCurrentFileNoteLevel()
+        {
+            if (SelectedMidiFile != null)
+            {
+                var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
+                if (_noteLevelSettings.TryGetValue(key, out int savedLevel))
+                {
+                    NoteLevel = savedLevel;
+                }
+                else
+                {
+                    NoteLevel = 0;
+                }
+            }
+        }
+
         public bool CanAutoAdjust { get; private set; }
 
         private Dictionary<string, int> _noteLevelSettings = new Dictionary<string, int>();
@@ -206,7 +241,7 @@ namespace MidiAutoPlayer.ViewModel
             {
                 for (int level = -24; level <= 24; level++)
                 {
-                    SelectedMidiFile.RefreshTracksByNoteLevel(level);
+                    SelectedMidiFile.RefreshTracksByNoteLevel(level, InstrumentType);
                     var radio = SelectedMidiFile.CanPlayNoteRadio;
                     if (radio > bestRadio)
                     {
@@ -216,10 +251,11 @@ namespace MidiAutoPlayer.ViewModel
                 }
             });
 
-            SelectedMidiFile.RefreshTracksByNoteLevel(originalLevel);
+            SelectedMidiFile.RefreshTracksByNoteLevel(originalLevel, InstrumentType);
             
             MidiPlayer.NoteLevel = bestLevel;
-            _noteLevelSettings[SelectedMidiFile.Name] = bestLevel;
+            var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
+            _noteLevelSettings[key] = bestLevel;
             SaveSettings();
             
             RefreshMidiFileInfoByNoteLevel(MidiPlayer.NoteLevel);
@@ -237,10 +273,20 @@ namespace MidiAutoPlayer.ViewModel
                     var lines = File.ReadAllLines(settingPath);
                     foreach (var line in lines)
                     {
-                        var parts = line.Split('=');
-                        if (parts.Length == 2 && int.TryParse(parts[1], out int level))
+                        if (line.StartsWith("_InstrumentType="))
                         {
-                            _noteLevelSettings[parts[0]] = level;
+                            if (int.TryParse(line.Split('=')[1], out int type) && Enum.IsDefined(typeof(InstrumentType), type))
+                            {
+                                _InstrumentType = (InstrumentType)type;
+                            }
+                        }
+                        else
+                        {
+                            var parts = line.Split('=');
+                            if (parts.Length == 2 && int.TryParse(parts[1], out int level))
+                            {
+                                _noteLevelSettings[parts[0]] = level;
+                            }
                         }
                     }
                 }
@@ -253,7 +299,8 @@ namespace MidiAutoPlayer.ViewModel
             try
             {
                 var settingPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.txt");
-                var lines = _noteLevelSettings.Select(kv => $"{kv.Key}={kv.Value}");
+                var lines = _noteLevelSettings.Select(kv => $"{kv.Key}={kv.Value}").ToList();
+                lines.Insert(0, $"_InstrumentType={(int)InstrumentType}");
                 File.WriteAllLines(settingPath, lines);
             }
             catch { }
@@ -263,9 +310,11 @@ namespace MidiAutoPlayer.ViewModel
         {
             if (SelectedMidiFile != null && MidiPlayer != null)
             {
-                if (_noteLevelSettings.TryGetValue(SelectedMidiFile.Name, out int savedLevel))
+                var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
+                if (_noteLevelSettings.TryGetValue(key, out int savedLevel))
                 {
                     MidiPlayer.NoteLevel = savedLevel;
+                    RefreshMidiFileInfoByNoteLevel(savedLevel);
                 }
             }
         }
@@ -389,15 +438,35 @@ namespace MidiAutoPlayer.ViewModel
             var files = Directory.GetFiles(midiDir).ToList();
             if (files.Count > 0)
             {
-                var infos = files.ConvertAll(x => new MidiFileInfo(x)).OrderBy(x => x.Name);
-                MidiFileInfoList = new ObservableCollection<MidiFileInfo>(infos);
-                MidiPlayer = new MidiPlayer();
-                MidiPlayer.Started += MidiPlayer_Started;
-                MidiPlayer.Stopped += MidiPlayer_Stopped;
-                MidiPlayer.Finished += MidiPlayer_Finished;
-                SelectedMidiFile = MidiFileInfoList.First();
-                ChangePlayFile(SelectedMidiFile, false);
-                ApplyStoredNoteLevel();
+                var infos = new List<MidiFileInfo>();
+                foreach (var file in files)
+                {
+                    try
+                    {
+                        var info = new MidiFileInfo(file);
+                        infos.Add(info);
+                    }
+                    catch
+                    {
+                    }
+                }
+                if (infos.Count > 0)
+                {
+                    var orderedInfos = infos.OrderBy(x => x.Name).ToList();
+                    MidiFileInfoList = new ObservableCollection<MidiFileInfo>(orderedInfos);
+                    MidiPlayer = new MidiPlayer();
+                    MidiPlayer.Started += MidiPlayer_Started;
+                    MidiPlayer.Stopped += MidiPlayer_Stopped;
+                    MidiPlayer.Finished += MidiPlayer_Finished;
+                    SelectedMidiFile = MidiFileInfoList.First();
+                    ChangePlayFile(SelectedMidiFile, false);
+                    ApplyStoredNoteLevel();
+                }
+                else
+                {
+                    MidiFileInfoList = new ObservableCollection<MidiFileInfo>();
+                    MidiPlayer = new MidiPlayer();
+                }
             }
             else
             {
@@ -424,7 +493,7 @@ namespace MidiAutoPlayer.ViewModel
         {
             foreach (var item in MidiFileInfoList)
             {
-                item.RefreshTracksByNoteLevel(noteLevel);
+                item.RefreshTracksByNoteLevel(noteLevel, InstrumentType);
             }
             var info = SelectedMidiFile;
             SelectedMidiFile = null;
@@ -568,7 +637,7 @@ namespace MidiAutoPlayer.ViewModel
                         }
                         else
                         {
-                            if (MidiPlayer?.MidiFileInfo == null)
+                            if (MidiPlayer?.MidiFileInfo == null && MidiFileInfoList.Count > 0)
                             {
                                 ChangePlayFile(MidiFileInfoList.First());
                             }
@@ -595,6 +664,10 @@ namespace MidiAutoPlayer.ViewModel
 
         public void PlayLast()
         {
+            if (MidiFileInfoList.Count == 0)
+            {
+                return;
+            }
             if (MidiPlayer.MidiFileInfo == null)
             {
                 ChangePlayFile(MidiFileInfoList.Last());
@@ -616,6 +689,10 @@ namespace MidiAutoPlayer.ViewModel
 
         public void PlayNext()
         {
+            if (MidiFileInfoList.Count == 0)
+            {
+                return;
+            }
             if (MidiPlayer.MidiFileInfo == null)
             {
                 ChangePlayFile(MidiFileInfoList.First());

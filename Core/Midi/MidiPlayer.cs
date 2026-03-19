@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using MidiAutoPlayer.Core.Native;
+using MidiAutoPlayer.Core.MusicGame;
 using static MidiAutoPlayer.Core.Native.Msg;
 using Melanchall.DryWetMidi.Core;
 using Melanchall.DryWetMidi.Devices;
@@ -126,6 +130,11 @@ namespace MidiAutoPlayer.Core.Midi
                 else
                 {
                     Log("  Stopping playback...");
+                    foreach (var kvp in _activeKeys)
+                    {
+                        SendKeyUp(kvp.Key, false);
+                    }
+                    _activeKeys.Clear();
                     _playback.Stop();
                 }
             }
@@ -167,11 +176,15 @@ namespace MidiAutoPlayer.Core.Midi
 
         public int NoteLevel { get; set; }
 
+        public InstrumentType InstrumentType { get; set; } = InstrumentType.Piano;
+
         public event EventHandler? Started;
 
         public event EventHandler? Stopped;
 
         public event EventHandler? Finished;
+
+        private Dictionary<ushort, CancellationTokenSource> _activeKeys = new Dictionary<ushort, CancellationTokenSource>();
 
         private void _playback_Started(object? sender, EventArgs e)
         {
@@ -182,12 +195,22 @@ namespace MidiAutoPlayer.Core.Midi
         private void _playback_Stopped(object? sender, EventArgs e)
         {
             Log("_playback_Stopped fired");
+            foreach (var kvp in _activeKeys)
+            {
+                SendKeyUp(kvp.Key, false);
+            }
+            _activeKeys.Clear();
             Stopped?.Invoke(this, e);
         }
 
         private void _playback_Finished(object? sender, EventArgs e)
         {
             Log("_playback_Finished fired");
+            foreach (var kvp in _activeKeys)
+            {
+                SendKeyUp(kvp.Key, false);
+            }
+            _activeKeys.Clear();
             Finished?.Invoke(this, e);
         }
 
@@ -247,6 +270,11 @@ namespace MidiAutoPlayer.Core.Midi
         {
             Log($"ChangeFileInfo called with autoPlay: {autoPlay}");
             if (info == null) return;
+            foreach (var kvp in _activeKeys)
+            {
+                SendKeyUp(kvp.Key, false);
+            }
+            _activeKeys.Clear();
             Name = info.Name;
             MidiFileInfo = info;
             ChangeFileInfoInternal();
@@ -264,6 +292,11 @@ namespace MidiAutoPlayer.Core.Midi
                 Log("MidiFileInfo is null, cannot change");
                 return;
             }
+            foreach (var kvp in _activeKeys)
+            {
+                SendKeyUp(kvp.Key, false);
+            }
+            _activeKeys.Clear();
             var time = CurrentTime;
             ChangeFileInfoInternal();
             if (autoPlay)
@@ -298,6 +331,10 @@ namespace MidiAutoPlayer.Core.Midi
 
         private void NoteEventPlayed(object? sender, MidiEventPlayedEventArgs e)
         {
+            var dictionary = InstrumentType == InstrumentType.FrenchHorn 
+                ? Const.FrenchHornNoteToVisualKeyDictionary 
+                : Const.NoteToVisualKeyDictionary;
+
             if (e.Event.EventType == MidiEventType.NoteOn)
             {
                 var note = e.Event as NoteOnEvent;
@@ -306,28 +343,67 @@ namespace MidiAutoPlayer.Core.Midi
                 var num = note.NoteNumber + NoteLevel;
                 while (true)
                 {
-                    if (num < 48)
-                    {
-                        num += 12;
-                    }
-                    if (num > 83)
-                    {
-                        num -= 12;
-                    }
-                    if (num >= 48 && num <= 83)
-                    {
-                        break;
-                    }
+                    if (num < 48) num += 12;
+                    if (num > 83) num -= 12;
+                    if (num >= 48 && num <= 83) break;
                 }
-                if (Const.NoteToVisualKeyDictionary.ContainsKey(num))
+
+                if (dictionary.ContainsKey(num))
                 {
-                    var keyCode = (ushort)Const.NoteToVisualKeyDictionary[num];
-                    Log($"NoteEventPlayed: note={note.NoteNumber}, adjusted={num}, key={keyCode}");
-                    SendKey(keyCode, PlayBackground);
+                    var keyCode = (ushort)dictionary[num];
+                    Log($"NoteOn: note={note.NoteNumber}, adjusted={num}, key={keyCode}, instrument={InstrumentType}");
+
+                    if (InstrumentType == InstrumentType.Piano)
+                    {
+                        SendKey(keyCode, PlayBackground);
+                    }
+                    else
+                    {
+                        if (_activeKeys.ContainsKey(keyCode))
+                        {
+                            _activeKeys[keyCode].Cancel();
+                            _activeKeys[keyCode].Dispose();
+                            _activeKeys.Remove(keyCode);
+                            SendKeyUp(keyCode, PlayBackground);
+                        }
+
+                        SendKeyDown(keyCode, PlayBackground);
+
+                        var cts = new CancellationTokenSource();
+                        _activeKeys[keyCode] = cts;
+                    }
                 }
                 else
                 {
                     Log($"NoteEventPlayed: note={note.NoteNumber}, adjusted={num} - key not found");
+                }
+            }
+            else if (e.Event.EventType == MidiEventType.NoteOff)
+            {
+                var note = e.Event as NoteOffEvent;
+                if (note == null) return;
+                
+                var num = note.NoteNumber + NoteLevel;
+                while (true)
+                {
+                    if (num < 48) num += 12;
+                    if (num > 83) num -= 12;
+                    if (num >= 48 && num <= 83) break;
+                }
+
+                if (dictionary.ContainsKey(num))
+                {
+                    var keyCode = (ushort)dictionary[num];
+                    Log($"NoteOff: note={note.NoteNumber}, adjusted={num}, key={keyCode}");
+
+                    if (_activeKeys.ContainsKey(keyCode))
+                    {
+                        _activeKeys[keyCode].Cancel();
+                        _activeKeys[keyCode].Dispose();
+                        _activeKeys.Remove(keyCode);
+                    }
+
+                    SendKeyUp(keyCode, PlayBackground);
                 }
             }
         }
@@ -352,6 +428,26 @@ namespace MidiAutoPlayer.Core.Midi
             User32.PostMessage(_hWnd, Msg.WM_IME_KEYUP, (uint)keyCode, 0xC01E0001);
             
             Log("  PostMessage sent successfully");
+        }
+
+        private void SendKeyDown(ushort keyCode, bool background)
+        {
+            if (_hWnd == IntPtr.Zero) return;
+
+            if (background)
+            {
+                User32.PostMessage(_hWnd, Msg.WM_ACTIVATE, 1, 0);
+            }
+
+            User32.PostMessage(_hWnd, Msg.WM_KEYDOWN, (uint)keyCode, 0x001E0001);
+            User32.PostMessage(_hWnd, Msg.WM_CHAR, (uint)keyCode, 0x001E0001);
+        }
+
+        private void SendKeyUp(ushort keyCode, bool background)
+        {
+            if (_hWnd == IntPtr.Zero) return;
+
+            User32.PostMessage(_hWnd, Msg.WM_IME_KEYUP, (uint)keyCode, 0xC01E0001);
         }
     }
 }

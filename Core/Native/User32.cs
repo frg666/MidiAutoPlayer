@@ -22,6 +22,9 @@ namespace MidiAutoPlayer.Core.Native
         [DllImport("user32.dll", SetLastError = true)]
         public static extern void SwitchToThisWindow(IntPtr hWnd, bool fUnknown);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
         [DllImport("winmm.dll")]
         public static extern uint timeBeginPeriod(uint uPeriod);
 

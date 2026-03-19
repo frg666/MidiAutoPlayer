@@ -36,3 +36,6 @@ settings.txt
 # OS generated files
 .DS_Store
 Thumbs.db
+.vscode/launch.json
+.vscode/tasks.json
+.gitignore
