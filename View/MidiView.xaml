@@ -7,6 +7,64 @@
              xmlns:local="clr-namespace:MidiAutoPlayer"
              mc:Ignorable="d"
              Loaded="UserControl_Loaded">
+    <UserControl.Resources>
+        <!-- 让列表项、标签页等控件背景透明，透出亚克力毛玻璃 -->
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#1B1B1B" />
+            <Setter Property="Padding" Value="6,6" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#4DB3B3B3" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#1B1B1B" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#4DB3B3B3" />
+                                <Setter Property="Foreground" Value="#1B1B1B" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition />
@@ -29,34 +87,72 @@
                            VerticalAlignment="Bottom"
                            Foreground="Gray"
                            Text="(双击演奏)" />
-            </StackPanel>
-            <Border Grid.Row="1" Margin="20,10,0,0" Background="#F5F5F5" CornerRadius="8">
-                <ListBox x:Name="ListBox_MidiFileInfo"
+                <ui:TextBox Width="160"
+                         Margin="16,0,0,0"
+                         VerticalAlignment="Center"
                          Background="Transparent"
-                         BorderThickness="0"
-                         ItemsSource="{Binding MidiFileInfoList}"
-                         MouseDoubleClick="ListBox_MidiFileInfo_MouseDoubleClick"
-                         SelectedItem="{Binding SelectedMidiFile}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" Text="{Binding Name}" Margin="5,3" />
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         PlaceholderText="搜索文件名..." />
+                <ui:Button Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           Content="{Binding SortButtonContent}"
+                           Appearance="Secondary"
+                           Click="Button_Sort_Click" />
+            </StackPanel>
+            <Border Grid.Row="1" Margin="20,10,0,0" Background="Transparent" CornerRadius="8">
+                <TabControl x:Name="TabControl_Files" Background="Transparent" BorderThickness="0">
+                    <TabItem x:Name="Tab_All" Header="全部">
+                        <ListBox x:Name="ListBox_MidiFileInfo"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 ItemsSource="{Binding MidiFileInfoList}"
+                                 MouseDoubleClick="ListBox_MidiFileInfo_MouseDoubleClick"
+                                 SelectedItem="{Binding SelectedMidiFile}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" Text="{Binding Name}" Margin="5,3" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+                    <TabItem x:Name="Tab_Dms" Header="DoMiSo">
+                        <ListBox x:Name="ListBox_DoMiSoFiles"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 ItemsSource="{Binding DoMiSoFileList}"
+                                 MouseDoubleClick="ListBox_MidiFileInfo_MouseDoubleClick"
+                                 SelectedItem="{Binding SelectedMidiFile}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" Text="{Binding Name}" Margin="5,3" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+                    <TabItem x:Name="Tab_Midi" Header="MIDI">
+                        <ListBox x:Name="ListBox_MidiOnlyFiles"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 ItemsSource="{Binding MidiOnlyFileList}"
+                                 MouseDoubleClick="ListBox_MidiFileInfo_MouseDoubleClick"
+                                 SelectedItem="{Binding SelectedMidiFile}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock HorizontalAlignment="Left" VerticalAlignment="Center" Text="{Binding Name}" Margin="5,3" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </TabItem>
+                </TabControl>
             </Border>
         </Grid>
 
-        <Grid Grid.Row="0" Grid.Column="1" Margin="20,10,10,0" Background="#FFFFFF">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition />
-            </Grid.RowDefinitions>
-            <StackPanel Grid.Row="0">
+        <ScrollViewer Grid.Row="0" Grid.Column="1" Margin="20,10,10,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
                 <TextBlock Margin="0,0,0,10"
                            VerticalAlignment="Center"
                            FontSize="20"
-                           Text="设置" />
+                           Text="播放控制" />
                 <StackPanel Orientation="Horizontal">
                     <TextBlock VerticalAlignment="Center" Text="功能状态：" />
                     <TextBlock VerticalAlignment="Center" Text="{Binding StateText}" />
@@ -68,6 +164,7 @@
                         <RowDefinition Height="36" />
                         <RowDefinition Height="36" />
                         <RowDefinition Height="36" />
+                        <RowDefinition Height="40" />
                         <RowDefinition Height="40" />
                         <RowDefinition Height="40" />
                     </Grid.RowDefinitions>
@@ -101,6 +198,7 @@
                               Grid.Column="1"
                               Width="100"
                               HorizontalAlignment="Left"
+                              Background="Transparent"
                               SelectedIndex="{Binding InstrumentType, Converter={StaticResource InstrumentTypeConverter}}"
                               VerticalAlignment="Center">
                         <ComboBoxItem Content="钢琴" />
@@ -117,9 +215,10 @@
                                   Minimum="0.1"
                                   Maximum="10"
                                   SmallChange="0.1"
-                                  SpinButtonPlacementMode="Hidden"
-                                  Value="{Binding Speed, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Grid.Row="4"
+                                  SpinButtonPlacementMode="Inline"
+                                  ClearButtonEnabled="False"
+                                  Background="Transparent"
+                                  Value="{Binding Speed, UpdateSourceTrigger=PropertyChanged}" />                    <TextBlock Grid.Row="4"
                                Grid.Column="0"
                                VerticalAlignment="Center"
                                Text="升降调" />
@@ -132,7 +231,9 @@
                                       Minimum="-24"
                                       Maximum="24"
                                       SmallChange="1"
-                                      SpinButtonPlacementMode="Hidden"
+                                      SpinButtonPlacementMode="Inline"
+                                      ClearButtonEnabled="False"
+                                      Background="Transparent"
                                       Value="{Binding NoteLevel, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
                     <ui:Button Grid.Row="5"
@@ -151,30 +252,47 @@
                                Appearance="Secondary"
                                HorizontalAlignment="Left"
                                Click="Button_RefreshWindow_Click" />
+                    <ui:Button x:Name="Button_DecryptDms"
+                               Grid.Row="7"
+                               Grid.Column="0"
+                               Grid.ColumnSpan="2"
+                               Margin="0,8,0,0"
+                               Content="解密DMS文件"
+                               Appearance="Secondary"
+                               HorizontalAlignment="Left"
+                               Visibility="Collapsed" />
                 </Grid>
-            </StackPanel>
 
-            <StackPanel Grid.Row="1">
+            <StackPanel Margin="0,10,0,0">
                 <TextBlock FontSize="20" Text="文件信息" />
                 <TextBlock Margin="0,4,0,0" Text="{Binding SelectedMidiFile.Name}" />
                 <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
                     <TextBlock Text="总音符数：" />
                     <TextBlock Width="50" Text="{Binding SelectedMidiFile.NoteNumber}" />
-                    <TextBlock Text="总可演奏音符数：" />
-                    <TextBlock Width="50" Text="{Binding SelectedMidiFile.CanPlayNoteNumber}" />
-                    <TextBlock Text="钢琴命中率：" />
+                </StackPanel>
+                <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                    <TextBlock Text="钢琴(21键) 命中率：" FontWeight="Bold" />
                     <TextBlock Text="{Binding SelectedMidiFile.CanPlayNoteRadio, StringFormat=P1}" />
-                    <TextBlock Text="  圆号命中率：" />
+                    <TextBlock Text="　最佳：" />
+                    <TextBlock Text="{Binding SelectedMidiFile.BestNoteRadio, StringFormat=P1}" />
+                    <TextBlock Text="　移调" />
+                    <TextBlock Text="{Binding SelectedMidiFile.BestNoteLevel, StringFormat=+0;-0;0}" />
+                </StackPanel>
+                <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                    <TextBlock Text="圆号(14键) 命中率：" FontWeight="Bold" />
                     <TextBlock Text="{Binding SelectedMidiFile.FrenchHornCanPlayNoteRadio, StringFormat=P1}" />
+                    <TextBlock Text="　最佳：" />
+                    <TextBlock Text="{Binding SelectedMidiFile.FrenchHornBestNoteRadio, StringFormat=P1}" />
+                    <TextBlock Text="　移调" />
+                    <TextBlock Text="{Binding SelectedMidiFile.FrenchHornBestNoteLevel, StringFormat=+0;-0;0}" />
                 </StackPanel>
                 <TextBlock Margin="0,10,0,0" FontSize="16" Text="音轨信息" />
             </StackPanel>
 
-            <ScrollViewer Grid.Row="2">
-                <ItemsControl ItemsSource="{Binding SelectedMidiFile.MidiTracks}">
-                    <ItemsControl.ItemTemplate>
+            <ItemsControl ItemsSource="{Binding SelectedMidiFile.MidiTracks}">
+                <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <Border Margin="0,0,20,10" Background="White" CornerRadius="6" Padding="4">
+                            <Border Margin="0,0,20,10" Background="Transparent" CornerRadius="6" Padding="4">
                                 <StackPanel Orientation="Horizontal">
                                     <CheckBox x:Name="ToggleButton_CheckTrack"
                                               Width="60"
@@ -214,22 +332,32 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-            </ScrollViewer>
-        </Grid>
+            </StackPanel>
+        </ScrollViewer>
 
-        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="20,10">
-            <ui:Button Content="⏮" Padding="15,8" Click="Button_Back_Click" />
-            <ui:Button x:Name="Button_Play" Margin="10,0" Padding="25,8" Appearance="Primary" Click="Button_Play_Click">
-                <ui:Button.Content>
-                    <TextBlock Text="▶" FontSize="18" />
-                </ui:Button.Content>
-            </ui:Button>
-            <ui:Button Content="⏭" Padding="15,8" Click="Button_Forward_Click" />
-            <TextBlock Margin="20,0,0,0" VerticalAlignment="Center">
-                <Run Text="{Binding CurrentTime, StringFormat='{}{0:mm\\:ss}', Mode=OneWay}" />
-                <Run Text=" / " />
-                <Run Text="{Binding TotalTime, StringFormat='{}{0:mm\\:ss}', Mode=OneWay}" />
-            </TextBlock>
+        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Margin="20,10">
+            <Slider x:Name="Slider_Progress"
+                    Minimum="0"
+                    Maximum="{Binding ProgressMaximum}"
+                    Value="{Binding ProgressValue, Mode=TwoWay}"
+                    ValueChanged="Slider_Progress_ValueChanged"
+                    Thumb.DragStarted="Slider_Progress_DragStarted"
+                    Thumb.DragCompleted="Slider_Progress_DragCompleted"
+                    IsEnabled="{Binding CanPlay}" />
+            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                <ui:Button Content="⏮" Padding="15,8" Click="Button_Back_Click" />
+                <ui:Button x:Name="Button_Play" Margin="10,0" Padding="25,8" Appearance="Primary" Click="Button_Play_Click">
+                    <ui:Button.Content>
+                        <TextBlock Text="▶" FontSize="18" />
+                    </ui:Button.Content>
+                </ui:Button>
+                <ui:Button Content="⏭" Padding="15,8" Click="Button_Forward_Click" />
+                <TextBlock Margin="20,0,0,0" VerticalAlignment="Center">
+                    <Run Text="{Binding CurrentTime, StringFormat='{}{0:mm\\:ss}', Mode=OneWay}" />
+                    <Run Text=" / " />
+                    <Run Text="{Binding TotalTime, StringFormat='{}{0:mm\\:ss}', Mode=OneWay}" />
+                </TextBlock>
+            </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="20,0,20,10">

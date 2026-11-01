@@ -8,7 +8,7 @@ namespace MidiAutoPlayer.Core.Midi
     {
         public TrackChunk Track { get; set; }
 
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
 
         public bool IsCheck { get; set; }
 
@@ -33,40 +33,35 @@ namespace MidiAutoPlayer.Core.Midi
         public int FrenchHornMinNoteLevel { get; set; }
 
 
+        // 取所有真正发声的 NoteOn（velocity > 0）。
+        // velocity == 0 的 NoteOn 在 MIDI 规范中等价于 NoteOff，不能计入音符数。
+        private IEnumerable<NoteOnEvent> PlayableNoteOns =>
+            Track.Events.Where(x => x.EventType == MidiEventType.NoteOn)
+                        .Cast<NoteOnEvent>()
+                        .Where(x => x.Velocity > 0);
+
         public MidiTrack(TrackChunk track)
         {
             Track = track;
-            Name = track.Events.OfType<SequenceTrackNameEvent>().FirstOrDefault()?.Text;
-            NoteNumber = track.Events.Count(x => x.EventType == MidiEventType.NoteOn);
-            RefreshByNoteLevel(0, InstrumentType.Piano);
-            RefreshFrenchHornNoteLevel(0);
+            Name = track.Events.OfType<SequenceTrackNameEvent>().FirstOrDefault()?.Text ?? string.Empty;
+            NoteNumber = PlayableNoteOns.Count();
+            RefreshByNoteLevel(0);
         }
 
+        // 一次移调，同时刷新钢琴(21键)与圆号(14键)两套可弹数与命中率。
         public void RefreshByNoteLevel(int noteLevel, InstrumentType instrumentType = InstrumentType.Piano)
         {
-            var dictionary = instrumentType == InstrumentType.FrenchHorn 
-                ? Const.FrenchHornNoteToVisualKeyDictionary 
-                : Const.NoteToVisualKeyDictionary;
-            
-            CanPlayNoteNumber = Track.Events.Where(x => x.EventType == MidiEventType.NoteOn).Count(x => dictionary.ContainsKey((x as NoteOnEvent).NoteNumber + noteLevel));
-            
-            if (CanBeChecked)
-            {
-                MaxNoteLevel = Track.Events.Where(x => x.EventType == MidiEventType.NoteOn).Max(x => (x as NoteOnEvent).NoteNumber + noteLevel);
-                MinNoteLevel = Track.Events.Where(x => x.EventType == MidiEventType.NoteOn).Min(x => (x as NoteOnEvent).NoteNumber + noteLevel);
-            }
-        }
+            // 钢琴：NoteToVisualKeyDictionary（21 键）
+            CanPlayNoteNumber = PlayableNoteOns.Count(x => Const.NoteToVisualKeyDictionary.ContainsKey(x.NoteNumber + noteLevel));
+            // 圆号：FrenchHornNoteToVisualKeyDictionary（14 键）
+            FrenchHornCanPlayNoteNumber = PlayableNoteOns.Count(x => Const.FrenchHornNoteToVisualKeyDictionary.ContainsKey(x.NoteNumber + noteLevel));
 
-        public void RefreshFrenchHornNoteLevel(int noteLevel)
-        {
-            var frenchHornDictionary = Const.FrenchHornNoteToVisualKeyDictionary;
-            
-            FrenchHornCanPlayNoteNumber = Track.Events.Where(x => x.EventType == MidiEventType.NoteOn).Count(x => frenchHornDictionary.ContainsKey((x as NoteOnEvent).NoteNumber + noteLevel));
-            
             if (CanBeChecked)
             {
-                FrenchHornMaxNoteLevel = Track.Events.Where(x => x.EventType == MidiEventType.NoteOn).Max(x => (x as NoteOnEvent).NoteNumber + noteLevel);
-                FrenchHornMinNoteLevel = Track.Events.Where(x => x.EventType == MidiEventType.NoteOn).Min(x => (x as NoteOnEvent).NoteNumber + noteLevel);
+                MaxNoteLevel = PlayableNoteOns.Max(x => x.NoteNumber + noteLevel);
+                MinNoteLevel = PlayableNoteOns.Min(x => x.NoteNumber + noteLevel);
+                FrenchHornMaxNoteLevel = MaxNoteLevel;
+                FrenchHornMinNoteLevel = MinNoteLevel;
             }
         }
     }

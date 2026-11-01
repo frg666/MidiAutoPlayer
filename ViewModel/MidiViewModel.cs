@@ -23,8 +23,8 @@ namespace MidiAutoPlayer.ViewModel
         }
 
 
-        private ObservableCollection<MidiFileInfo> _MidiFileInfoList;
-        public ObservableCollection<MidiFileInfo> MidiFileInfoList
+        private ObservableCollection<IScoreInfo> _MidiFileInfoList = new ObservableCollection<IScoreInfo>();
+        public ObservableCollection<IScoreInfo> MidiFileInfoList
         {
             get { return _MidiFileInfoList; }
             set
@@ -34,9 +34,109 @@ namespace MidiAutoPlayer.ViewModel
             }
         }
 
+        private ObservableCollection<IScoreInfo> _DoMiSoFileList = new ObservableCollection<IScoreInfo>();
+        public ObservableCollection<IScoreInfo> DoMiSoFileList
+        {
+            get { return _DoMiSoFileList; }
+            set
+            {
+                _DoMiSoFileList = value;
+                OnPropertyChanged();
+            }
+        }
 
-        private MidiFileInfo _SelectedMidiFile;
-        public MidiFileInfo SelectedMidiFile
+        private ObservableCollection<IScoreInfo> _MidiOnlyFileList = new ObservableCollection<IScoreInfo>();
+        public ObservableCollection<IScoreInfo> MidiOnlyFileList
+        {
+            get { return _MidiOnlyFileList; }
+            set
+            {
+                _MidiOnlyFileList = value;
+                OnPropertyChanged();
+            }
+        }
+
+
+        // 排序与搜索：保存三个列表的完整原始数据源，排序/搜索时据此重新填充。
+        private List<IScoreInfo> _allFilesSource = new List<IScoreInfo>();
+        private List<IScoreInfo> _dmsFilesSource = new List<IScoreInfo>();
+        private List<IScoreInfo> _midiFilesSource = new List<IScoreInfo>();
+
+        private bool _SortByHitRate;
+        public bool SortByHitRate
+        {
+            get { return _SortByHitRate; }
+            set
+            {
+                _SortByHitRate = value;
+                OnPropertyChanged();
+                OnPropertyChanged("SortButtonContent");
+                ApplySortAndFilter();
+            }
+        }
+
+        public string SortButtonContent => _SortByHitRate ? "排序：命中率" : "排序：名称";
+
+        private string _SearchText = "";
+        public string SearchText
+        {
+            get { return _SearchText; }
+            set
+            {
+                _SearchText = value ?? "";
+                OnPropertyChanged();
+                ApplySortAndFilter();
+            }
+        }
+
+        // 当前乐器对应的命中率（排序/搜索都基于它）
+        private double GetHitRate(IScoreInfo info)
+        {
+            return InstrumentType == InstrumentType.FrenchHorn
+                ? info.FrenchHornCanPlayNoteRadio
+                : info.CanPlayNoteRadio;
+        }
+
+        private IEnumerable<IScoreInfo> SortAndFilter(IEnumerable<IScoreInfo> source)
+        {
+            var query = source.AsEnumerable();
+            if (!string.IsNullOrWhiteSpace(_SearchText))
+            {
+                query = query.Where(x => x.Name != null && x.Name.Contains(_SearchText, StringComparison.OrdinalIgnoreCase));
+            }
+            if (_SortByHitRate)
+            {
+                query = query.OrderByDescending(x => GetHitRate(x));
+            }
+            else
+            {
+                query = query.OrderBy(x => x.Name);
+            }
+            return query.ToList();
+        }
+
+        private void ApplySortAndFilter()
+        {
+            var prevSelected = _SelectedMidiFile;
+            MidiFileInfoList = new ObservableCollection<IScoreInfo>(SortAndFilter(_allFilesSource));
+            DoMiSoFileList = new ObservableCollection<IScoreInfo>(SortAndFilter(_dmsFilesSource));
+            MidiOnlyFileList = new ObservableCollection<IScoreInfo>(SortAndFilter(_midiFilesSource));
+
+            // 保持之前选中的文件（若仍在过滤结果中）
+            if (prevSelected != null && MidiFileInfoList.Contains(prevSelected))
+            {
+                _SelectedMidiFile = prevSelected;
+                OnPropertyChanged("SelectedMidiFile");
+            }
+            else if (MidiFileInfoList.Count > 0)
+            {
+                SelectedMidiFile = MidiFileInfoList.First();
+            }
+        }
+
+
+        private IScoreInfo? _SelectedMidiFile;
+        public IScoreInfo? SelectedMidiFile
         {
             get { return _SelectedMidiFile; }
             set
@@ -83,7 +183,7 @@ namespace MidiAutoPlayer.ViewModel
             }
         }
 
-        private string _StateText;
+        private string _StateText = string.Empty;
         public string StateText
         {
             get { return _StateText; }
@@ -94,7 +194,7 @@ namespace MidiAutoPlayer.ViewModel
             }
         }
 
-        private string _Button_Restart_Content;
+        private string _Button_Restart_Content = string.Empty;
         public string Button_Restart_Content
         {
             get { return _Button_Restart_Content; }
@@ -105,7 +205,7 @@ namespace MidiAutoPlayer.ViewModel
             }
         }
 
-        private string _TextBlock_Color;
+        private string _TextBlock_Color = string.Empty;
         public string TextBlock_Color
         {
             get { return _TextBlock_Color; }
@@ -130,10 +230,15 @@ namespace MidiAutoPlayer.ViewModel
                 }
                 RefreshCurrentFileNoteLevel();
                 SaveSettings();
+                // 切换乐器后，若处于按命中率排序，需按新乐器的命中率重排
+                if (_SortByHitRate)
+                {
+                    ApplySortAndFilter();
+                }
             }
         }
 
-        public string Name => MidiPlayer?.Name;
+        public string Name => MidiPlayer?.Name ?? string.Empty;
 
 
         public bool IsPlaying
@@ -196,17 +301,77 @@ namespace MidiAutoPlayer.ViewModel
 
         public int NoteLevel
         {
-            get { return MidiPlayer?.NoteLevel ?? 0; }
+            get
+            {
+                // 返回「选中乐曲 + 当前乐器」的偏移量（独立于正在播放的乐曲）。
+                if (SelectedMidiFile != null)
+                {
+                    var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
+                    if (_noteLevelSettings.TryGetValue(key, out int savedLevel))
+                    {
+                        return savedLevel;
+                    }
+                }
+                return 0;
+            }
             set
             {
-                if (MidiPlayer != null)
+                if (SelectedMidiFile == null) return;
+
+                // 只更新「选中乐曲 + 当前乐器」的偏移设置，不直接改动播放器。
+                var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
+                _noteLevelSettings[key] = value;
+                SaveSettings();
+
+                // 仅当选中乐曲就是正在播放的乐曲时，才同步到播放器（实时生效）。
+                if (MidiPlayer != null && MidiPlayer.MidiFileInfo == SelectedMidiFile)
                 {
                     MidiPlayer.NoteLevel = value;
-                    RefreshMidiFileInfoByNoteLevel(value);
+                }
+
+                RefreshMidiFileInfoByNoteLevel(value);
+                OnPropertyChanged();
+                OnPropertyChanged("CanAutoAdjust");
+            }
+        }
+
+        public bool _isDraggingProgress;
+        private double _progressValue;
+        public double ProgressValue
+        {
+            get
+            {
+                if (_isDraggingProgress) return _progressValue;
+                return MidiPlayer?.CurrentTime.TotalSeconds ?? 0;
+            }
+            set
+            {
+                _progressValue = value;
+                if (_isDraggingProgress)
+                {
                     OnPropertyChanged();
-                    OnPropertyChanged("CanAutoAdjust");
                 }
             }
+        }
+
+        public double ProgressMaximum
+        {
+            get { return MidiPlayer?.TotalTime.TotalSeconds ?? 1; }
+        }
+
+        public void OnProgressDragStarted()
+        {
+            _isDraggingProgress = true;
+        }
+
+        public void OnProgressDragCompleted()
+        {
+            if (MidiPlayer != null)
+            {
+                MidiPlayer.CurrentTime = TimeSpan.FromSeconds(_progressValue);
+            }
+            _isDraggingProgress = false;
+            OnPropertyChanged("ProgressValue");
         }
 
         public void RefreshCurrentFileNoteLevel()
@@ -229,38 +394,50 @@ namespace MidiAutoPlayer.ViewModel
 
         private Dictionary<string, int> _noteLevelSettings = new Dictionary<string, int>();
 
+        // 窗口透明度（0.4~1.0，1.0 为完全不透明）
+        private double _windowOpacity = 1.0;
+        public double WindowOpacity
+        {
+            get { return _windowOpacity; }
+            set
+            {
+                var v = Math.Clamp(value, 0.4, 1.0);
+                if (Math.Abs(_windowOpacity - v) < 0.001)
+                {
+                    return;
+                }
+                _windowOpacity = v;
+                OnPropertyChanged();
+                SaveSettings();
+            }
+        }
+
         public async void AutoAdjustNoteLevel()
         {
             if (SelectedMidiFile == null || MidiPlayer == null) return;
 
-            var originalLevel = MidiPlayer.NoteLevel;
-            var bestLevel = originalLevel;
-            var bestRadio = 0.0;
-
             await Task.Run(() =>
             {
-                for (int level = -24; level <= 24; level++)
-                {
-                    SelectedMidiFile.RefreshTracksByNoteLevel(level, InstrumentType);
-                    var radio = SelectedMidiFile.CanPlayNoteRadio;
-                    if (radio > bestRadio)
-                    {
-                        bestRadio = radio;
-                        bestLevel = level;
-                    }
-                }
+                // 同时计算钢琴(21键)与圆号(14键)两套最佳移调及命中率
+                SelectedMidiFile.CalculateBestNoteLevel();
             });
 
-            SelectedMidiFile.RefreshTracksByNoteLevel(originalLevel, InstrumentType);
-            
-            MidiPlayer.NoteLevel = bestLevel;
-            var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
-            _noteLevelSettings[key] = bestLevel;
+            // 两套最佳移调分别持久化：钢琴 key=Name_0，圆号 key=Name_1
+            var pianoKey = $"{SelectedMidiFile.Name}_{(int)InstrumentType.Piano}";
+            var hornKey = $"{SelectedMidiFile.Name}_{(int)InstrumentType.FrenchHorn}";
+            _noteLevelSettings[pianoKey] = SelectedMidiFile.BestNoteLevel;
+            _noteLevelSettings[hornKey] = SelectedMidiFile.FrenchHornBestNoteLevel;
             SaveSettings();
-            
-            RefreshMidiFileInfoByNoteLevel(MidiPlayer.NoteLevel);
+
+            // 当前乐器的移调值设为对应的最佳移调（通过 NoteLevel setter 同步到播放器）
+            NoteLevel = InstrumentType == InstrumentType.FrenchHorn
+                ? SelectedMidiFile.FrenchHornBestNoteLevel
+                : SelectedMidiFile.BestNoteLevel;
+
             OnPropertyChanged("NoteLevel");
             OnPropertyChanged("CanAutoAdjust");
+            OnPropertyChanged("BestNoteRadio");
+            OnPropertyChanged("FrenchHornBestNoteRadio");
         }
 
         public void LoadSettings()
@@ -278,6 +455,13 @@ namespace MidiAutoPlayer.ViewModel
                             if (int.TryParse(line.Split('=')[1], out int type) && Enum.IsDefined(typeof(InstrumentType), type))
                             {
                                 _InstrumentType = (InstrumentType)type;
+                            }
+                        }
+                        else if (line.StartsWith("_WindowOpacity="))
+                        {
+                            if (double.TryParse(line.Split('=')[1], out double opacity))
+                            {
+                                _windowOpacity = Math.Clamp(opacity, 0.4, 1.0);
                             }
                         }
                         else
@@ -301,20 +485,21 @@ namespace MidiAutoPlayer.ViewModel
                 var settingPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.txt");
                 var lines = _noteLevelSettings.Select(kv => $"{kv.Key}={kv.Value}").ToList();
                 lines.Insert(0, $"_InstrumentType={(int)InstrumentType}");
+                lines.Insert(1, $"_WindowOpacity={_windowOpacity}");
                 File.WriteAllLines(settingPath, lines);
             }
             catch { }
         }
 
-        public void ApplyStoredNoteLevel()
+        public void ApplyStoredNoteLevel(IScoreInfo? info = null)
         {
-            if (SelectedMidiFile != null && MidiPlayer != null)
+            var target = info ?? SelectedMidiFile;
+            if (target != null && MidiPlayer != null)
             {
-                var key = $"{SelectedMidiFile.Name}_{(int)InstrumentType}";
+                var key = $"{target.Name}_{(int)InstrumentType}";
                 if (_noteLevelSettings.TryGetValue(key, out int savedLevel))
                 {
                     MidiPlayer.NoteLevel = savedLevel;
-                    RefreshMidiFileInfoByNoteLevel(savedLevel);
                 }
             }
         }
@@ -329,7 +514,7 @@ namespace MidiAutoPlayer.ViewModel
             NoteLevel = Math.Max(NoteLevel - 1, -24);
         }
 
-        public void DeleteSelectedFiles(IList<MidiFileInfo> selectedFiles)
+        public void DeleteSelectedFiles(IList<IScoreInfo> selectedFiles)
         {
             if (selectedFiles == null || selectedFiles.Count == 0) return;
 
@@ -367,24 +552,83 @@ namespace MidiAutoPlayer.ViewModel
                 Directory.CreateDirectory(midiDir);
             }
 
-            var files = Directory.GetFiles(midiDir).ToList();
+            var files = Directory.GetFiles(midiDir).Where(x =>
+            {
+                var ext = Path.GetExtension(x).ToLower();
+                return ext == ".mid" || ext == ".midi" || ext == ".txt" || ext == ".dms";
+            }).ToList();
+
             if (files.Count > 0)
             {
-                var infos = files.ConvertAll(x => new MidiFileInfo(x)).OrderBy(x => x.Name);
-                MidiFileInfoList = new ObservableCollection<MidiFileInfo>(infos);
-                SelectedMidiFile = MidiFileInfoList.First();
+                var allInfos = new List<IScoreInfo>();
+                var dmsInfos = new List<IScoreInfo>();
+                var midiInfos = new List<IScoreInfo>();
+
+                // Use parallel processing for faster loading
+                var loadTasks = files.Select(file => Task.Run(() =>
+                {
+                    try
+                    {
+                        var ext = Path.GetExtension(file).ToLower();
+                        if (ext == ".txt" || ext == ".dms")
+                        {
+                            return (info: (IScoreInfo)new DoMiSoFileInfo(file), isDms: true);
+                        }
+                        else
+                        {
+                            return (info: (IScoreInfo)new MidiFileInfo(file), isDms: false);
+                        }
+                    }
+                    catch
+                    {
+                        return (info: (IScoreInfo?)null, isDms: false);
+                    }
+                })).ToArray();
+
+                Task.WaitAll(loadTasks);
+
+                foreach (var task in loadTasks)
+                {
+                    var result = task.Result;
+                    if (result.info != null)
+                    {
+                        allInfos.Add(result.info);
+                        if (result.isDms)
+                            dmsInfos.Add(result.info);
+                        else
+                            midiInfos.Add(result.info);
+                    }
+                }
+
+                var orderedAllInfos = allInfos.OrderBy(x => x.Name).ToList();
+                var orderedDmsInfos = dmsInfos.OrderBy(x => x.Name).ToList();
+                var orderedMidiInfos = midiInfos.OrderBy(x => x.Name).ToList();
+
+                _allFilesSource = orderedAllInfos;
+                _dmsFilesSource = orderedDmsInfos;
+                _midiFilesSource = orderedMidiInfos;
+
+                ApplySortAndFilter();
+                SelectedMidiFile = MidiFileInfoList.FirstOrDefault();
             }
             else
             {
-                MidiFileInfoList = new ObservableCollection<MidiFileInfo>();
+                _allFilesSource = new List<IScoreInfo>();
+                _dmsFilesSource = new List<IScoreInfo>();
+                _midiFilesSource = new List<IScoreInfo>();
+                MidiFileInfoList = new ObservableCollection<IScoreInfo>();
+                DoMiSoFileList = new ObservableCollection<IScoreInfo>();
+                MidiOnlyFileList = new ObservableCollection<IScoreInfo>();
                 SelectedMidiFile = null;
             }
             OnPropertyChanged("MidiFileInfoList");
+            OnPropertyChanged("DoMiSoFileList");
+            OnPropertyChanged("MidiOnlyFileList");
         }
 
         public void DeleteFilesBelowThreshold(double threshold)
         {
-            var filesToDelete = new List<MidiFileInfo>();
+            var filesToDelete = new List<IScoreInfo>();
             foreach (var file in MidiFileInfoList)
             {
                 if (file.BestNoteRadio < threshold / 100.0)
@@ -419,9 +663,9 @@ namespace MidiAutoPlayer.ViewModel
 
         private bool hotkey;
         private IntPtr hWnd;
-        private HwndSource hwndSource;
-        private static MidiPlayer MidiPlayer;
-        private System.Timers.Timer timer;
+        private HwndSource? hwndSource;
+        private static MidiPlayer? MidiPlayer;
+        private System.Timers.Timer? timer;
 
         public MidiViewModel()
         {
@@ -435,49 +679,114 @@ namespace MidiAutoPlayer.ViewModel
 
             LoadSettings();
 
-            var files = Directory.GetFiles(midiDir).ToList();
+            // Initialize empty collections first for immediate UI display
+            MidiFileInfoList = new ObservableCollection<IScoreInfo>();
+            DoMiSoFileList = new ObservableCollection<IScoreInfo>();
+            MidiOnlyFileList = new ObservableCollection<IScoreInfo>();
+
+            // Load files asynchronously in background
+            Task.Run(() => LoadMidiFilesAsync(midiDir));
+        }
+
+        private async void LoadMidiFilesAsync(string midiDir)
+        {
+            var files = Directory.GetFiles(midiDir).Where(x =>
+            {
+                var ext = Path.GetExtension(x).ToLower();
+                return ext == ".mid" || ext == ".midi" || ext == ".txt" || ext == ".dms";
+            }).ToList();
+
             if (files.Count > 0)
             {
-                var infos = new List<MidiFileInfo>();
-                foreach (var file in files)
+                var allInfos = new List<IScoreInfo>();
+                var dmsInfos = new List<IScoreInfo>();
+                var midiInfos = new List<IScoreInfo>();
+
+                // Use parallel processing for faster loading
+                var loadTasks = files.Select(file => Task.Run(() =>
                 {
                     try
                     {
-                        var info = new MidiFileInfo(file);
-                        infos.Add(info);
+                        var ext = Path.GetExtension(file).ToLower();
+                        if (ext == ".txt" || ext == ".dms")
+                        {
+                            return (info: (IScoreInfo)new DoMiSoFileInfo(file), isDms: true);
+                        }
+                        else
+                        {
+                            return (info: (IScoreInfo)new MidiFileInfo(file), isDms: false);
+                        }
                     }
                     catch
                     {
+                        return (info: (IScoreInfo?)null, isDms: false);
+                    }
+                })).ToArray();
+
+                // Await without blocking - run in background
+                await Task.WhenAll(loadTasks);
+
+                foreach (var task in loadTasks)
+                {
+                    var result = task.Result;
+                    if (result.info != null)
+                    {
+                        allInfos.Add(result.info);
+                        if (result.isDms)
+                            dmsInfos.Add(result.info);
+                        else
+                            midiInfos.Add(result.info);
                     }
                 }
-                if (infos.Count > 0)
+
+                if (allInfos.Count > 0)
                 {
-                    var orderedInfos = infos.OrderBy(x => x.Name).ToList();
-                    MidiFileInfoList = new ObservableCollection<MidiFileInfo>(orderedInfos);
-                    MidiPlayer = new MidiPlayer();
-                    MidiPlayer.Started += MidiPlayer_Started;
-                    MidiPlayer.Stopped += MidiPlayer_Stopped;
-                    MidiPlayer.Finished += MidiPlayer_Finished;
-                    SelectedMidiFile = MidiFileInfoList.First();
-                    ChangePlayFile(SelectedMidiFile, false);
-                    ApplyStoredNoteLevel();
+                    var orderedAllInfos = allInfos.OrderBy(x => x.Name).ToList();
+                    var orderedDmsInfos = dmsInfos.OrderBy(x => x.Name).ToList();
+                    var orderedMidiInfos = midiInfos.OrderBy(x => x.Name).ToList();
+
+                    _allFilesSource = orderedAllInfos;
+                    _dmsFilesSource = orderedDmsInfos;
+                    _midiFilesSource = orderedMidiInfos;
+
+                    // Update UI on the UI thread
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        ApplySortAndFilter();
+
+                        if (MidiFileInfoList.Count > 0)
+                        {
+                            MidiPlayer = new MidiPlayer();
+                            MidiPlayer.Started += MidiPlayer_Started;
+                            MidiPlayer.Stopped += MidiPlayer_Stopped;
+                            MidiPlayer.Finished += MidiPlayer_Finished;
+                            SelectedMidiFile = MidiFileInfoList.First();
+                            ChangePlayFile(SelectedMidiFile!, false);
+                            ApplyStoredNoteLevel();
+                        }
+                    });
                 }
                 else
                 {
-                    MidiFileInfoList = new ObservableCollection<MidiFileInfo>();
+                    _allFilesSource = new List<IScoreInfo>();
+                    _dmsFilesSource = new List<IScoreInfo>();
+                    _midiFilesSource = new List<IScoreInfo>();
+                    MidiFileInfoList = new ObservableCollection<IScoreInfo>();
+                    DoMiSoFileList = new ObservableCollection<IScoreInfo>();
+                    MidiOnlyFileList = new ObservableCollection<IScoreInfo>();
                     MidiPlayer = new MidiPlayer();
                 }
             }
             else
             {
-                MidiFileInfoList = new ObservableCollection<MidiFileInfo>();
+                _allFilesSource = new List<IScoreInfo>();
+                _dmsFilesSource = new List<IScoreInfo>();
+                _midiFilesSource = new List<IScoreInfo>();
+                MidiFileInfoList = new ObservableCollection<IScoreInfo>();
                 MidiPlayer = new MidiPlayer();
             }
 
-            hWnd = Process.GetCurrentProcess().MainWindowHandle;
-            hotkey = Util.RegisterHotKey(hWnd);
-            hwndSource = HwndSource.FromHwnd(hWnd);
-            hwndSource.AddHook(HwndHook);
+            InitHotKey();
             RefreshState();
 
             if (files.Count > 0)
@@ -486,6 +795,24 @@ namespace MidiAutoPlayer.ViewModel
                 timer.AutoReset = true;
                 timer.Elapsed += Timer_Elapsed;
             }
+        }
+
+
+        private void InitHotKey()
+        {
+            // 窗口句柄在窗口显示后才有效；若尚未就绪则延迟到 UI 线程再试
+            hWnd = Process.GetCurrentProcess().MainWindowHandle;
+            if (hWnd == IntPtr.Zero)
+            {
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(
+                    new Action(() => InitHotKey()),
+                    System.Windows.Threading.DispatcherPriority.Loaded);
+                return;
+            }
+
+            hotkey = Util.RegisterHotKey(hWnd);
+            hwndSource = HwndSource.FromHwnd(hWnd);
+            hwndSource?.AddHook(HwndHook);
         }
 
 
@@ -501,39 +828,43 @@ namespace MidiAutoPlayer.ViewModel
         }
 
 
-        private void MidiPlayer_Started(object sender, EventArgs e)
+        private void MidiPlayer_Started(object? sender, EventArgs e)
         {
-            timer.Start();
+            timer?.Start();
             OnPropertyChanged("IsPlaying");
             OnPropertyChanged("CurrentTime");
         }
-        private void MidiPlayer_Stopped(object sender, EventArgs e)
+        private void MidiPlayer_Stopped(object? sender, EventArgs e)
         {
-            timer.Stop();
-            OnPropertyChanged("IsPlaying");
-            OnPropertyChanged("CurrentTime");
-        }
-
-        private void MidiPlayer_Finished(object sender, EventArgs e)
-        {
-            timer.Stop();
+            timer?.Stop();
             OnPropertyChanged("IsPlaying");
             OnPropertyChanged("CurrentTime");
         }
 
-        private void Timer_Elapsed(object sender, ElapsedEventArgs e)
+        private void MidiPlayer_Finished(object? sender, EventArgs e)
         {
+            timer?.Stop();
             OnPropertyChanged("IsPlaying");
             OnPropertyChanged("CurrentTime");
         }
 
+        private void Timer_Elapsed(object? sender, ElapsedEventArgs e)
+        {
+            OnPropertyChanged("IsPlaying");
+            OnPropertyChanged("CurrentTime");
+            if (!_isDraggingProgress)
+            {
+                OnPropertyChanged("ProgressValue");
+            }
+        }
 
-        public void ChangePlayFile(MidiFileInfo info, bool autoPlay = true)
+
+        public void ChangePlayFile(IScoreInfo info, bool autoPlay = true)
         {
             if (MidiPlayer != null && info != null)
             {
                 MidiPlayer.ChangeFileInfo(info, autoPlay);
-                ApplyStoredNoteLevel();
+                ApplyStoredNoteLevel(info);
                 OnPropertyChanged("Name");
                 OnPropertyChanged("IsPlaying");
                 OnPropertyChanged("AutoSwitchToGenshinWindow");
@@ -542,6 +873,8 @@ namespace MidiAutoPlayer.ViewModel
                 OnPropertyChanged("NoteLevel");
                 OnPropertyChanged("TotalTime");
                 OnPropertyChanged("CurrentTime");
+                OnPropertyChanged("ProgressMaximum");
+                OnPropertyChanged("ProgressValue");
             }
         }
 
@@ -553,10 +886,10 @@ namespace MidiAutoPlayer.ViewModel
             }
             if (MidiPlayer != null)
             {
-                MidiPlayer.Started -= MidiPlayer_Started;
+                MidiPlayer!.Started -= MidiPlayer_Started;
                 MidiPlayer.Stopped -= MidiPlayer_Stopped;
                 MidiPlayer.Finished -= MidiPlayer_Finished;
-                MidiPlayer?.ChangeFileInfo();
+                MidiPlayer.ChangeFileInfo();
                 MidiPlayer.Started += MidiPlayer_Started;
                 MidiPlayer.Stopped += MidiPlayer_Stopped;
                 MidiPlayer.Finished += MidiPlayer_Finished;
@@ -574,7 +907,7 @@ namespace MidiAutoPlayer.ViewModel
             CanPlay = MidiPlayer?.CanPlay ?? false;
             StateText = "正常";
             TextBlock_Color = "Black";
-            Button_Restart_Content = null;
+            Button_Restart_Content = string.Empty;
             if (!hotkey)
             {
                 StateText = "热键定义失败";
@@ -611,7 +944,7 @@ namespace MidiAutoPlayer.ViewModel
             }
             if (!CanPlay)
             {
-                MidiPlayer.RefreshGameWindow();
+                MidiPlayer?.RefreshGameWindow();
                 RefreshState();
             }
             if (!hotkey)
@@ -668,7 +1001,7 @@ namespace MidiAutoPlayer.ViewModel
             {
                 return;
             }
-            if (MidiPlayer.MidiFileInfo == null)
+            if (MidiPlayer?.MidiFileInfo == null)
             {
                 ChangePlayFile(MidiFileInfoList.Last());
             }
@@ -693,7 +1026,7 @@ namespace MidiAutoPlayer.ViewModel
             {
                 return;
             }
-            if (MidiPlayer.MidiFileInfo == null)
+            if (MidiPlayer?.MidiFileInfo == null)
             {
                 ChangePlayFile(MidiFileInfoList.First());
             }

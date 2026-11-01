@@ -93,7 +93,7 @@ namespace MidiAutoPlayer.Core.Midi
             catch { }
         }
 
-        public MidiFileInfo? MidiFileInfo { get; private set; }
+        public IScoreInfo? MidiFileInfo { get; private set; }
 
         public string Name { get; set; } = "";
 
@@ -266,7 +266,7 @@ namespace MidiAutoPlayer.Core.Midi
             _playback?.Dispose();
         }
 
-        public void ChangeFileInfo(MidiFileInfo info, bool autoPlay = true)
+        public void ChangeFileInfo(IScoreInfo info, bool autoPlay = true)
         {
             Log($"ChangeFileInfo called with autoPlay: {autoPlay}");
             if (info == null) return;
@@ -316,10 +316,20 @@ namespace MidiAutoPlayer.Core.Midi
             Log("ChangeFileInfoInternal: Setting up playback");
             var speed = _playback?.Speed;
             _playback?.Dispose();
-            MidiFileInfo.MidiFile.Chunks.Clear();
-            MidiFileInfo.MidiFile.Chunks.AddRange(MidiFileInfo.MidiTracks.Where(x => x.IsCheck).Select(x => x.Track));
-            _playback = MidiFileInfo.MidiFile.GetPlayback();
-            TotalTime = MidiFileInfo.MidiFile.GetDuration<MetricTimeSpan>();
+
+            if (MidiFileInfo is MidiFileInfo midiFileInfo)
+            {
+                midiFileInfo.MidiFile.Chunks.Clear();
+                midiFileInfo.MidiFile.Chunks.AddRange(midiFileInfo.MidiTracks.Where(x => x.IsCheck).Select(x => x.Track));
+                _playback = midiFileInfo.MidiFile.GetPlayback();
+                TotalTime = midiFileInfo.MidiFile.GetDuration<MetricTimeSpan>();
+            }
+            else
+            {
+                _playback = MidiFileInfo.MidiFile.GetPlayback();
+                TotalTime = MidiFileInfo.MidiFile.GetDuration<MetricTimeSpan>();
+            }
+
             _playback.Speed = speed ?? 1;
             _playback.InterruptNotesOnStop = true;
             _playback.EventPlayed += NoteEventPlayed;
@@ -339,14 +349,13 @@ namespace MidiAutoPlayer.Core.Midi
             {
                 var note = e.Event as NoteOnEvent;
                 if (note == null) return;
-                
+
+                // velocity == 0 的 NoteOn 在 MIDI 规范中等价于 NoteOff，跳过，不发声。
+                if (note.Velocity == 0) return;
+
+                // 不做任何八度折返：整体移调 note + NoteLevel，
+                // 超出乐器音域的音直接丢弃（与命中率统计逻辑一致）。
                 var num = note.NoteNumber + NoteLevel;
-                while (true)
-                {
-                    if (num < 48) num += 12;
-                    if (num > 83) num -= 12;
-                    if (num >= 48 && num <= 83) break;
-                }
 
                 if (dictionary.ContainsKey(num))
                 {
@@ -382,14 +391,9 @@ namespace MidiAutoPlayer.Core.Midi
             {
                 var note = e.Event as NoteOffEvent;
                 if (note == null) return;
-                
+
+                // 与 NoteOn 一致：整体移调，不做八度折返。
                 var num = note.NoteNumber + NoteLevel;
-                while (true)
-                {
-                    if (num < 48) num += 12;
-                    if (num > 83) num -= 12;
-                    if (num >= 48 && num <= 83) break;
-                }
 
                 if (dictionary.ContainsKey(num))
                 {

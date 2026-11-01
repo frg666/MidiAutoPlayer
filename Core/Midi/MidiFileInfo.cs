@@ -6,14 +6,12 @@ using MidiAutoPlayer.Core.MusicGame;
 
 namespace MidiAutoPlayer.Core.Midi
 {
-    public class MidiFileInfo
+    public class MidiFileInfo : IScoreInfo
     {
 
         public string Name { get; set; }
 
         public string FilePath { get; set; }
-
-        public FileInfo FileInfo { get; private set; }
 
         public MidiFile MidiFile { get; private set; }
 
@@ -39,7 +37,7 @@ namespace MidiAutoPlayer.Core.Midi
 
         public int FrenchHornCanPlayNoteNumber { get; set; }
 
-        public double FrenchHornCanPlayNoteRadio => NoteNumber > 0 ? (double)FrenchHornCanPlayNoteNumber / NoteNumber : 0;
+        public double FrenchHornCanPlayNoteRadio => FrenchHornNoteNumber > 0 ? (double)FrenchHornCanPlayNoteNumber / FrenchHornNoteNumber : 0;
 
         public int FrenchHornBestNoteLevel { get; set; }
 
@@ -81,46 +79,33 @@ namespace MidiAutoPlayer.Core.Midi
             }
         }
 
+        // 同时计算钢琴(21键)与圆号(14键)两套最佳移调及命中率。
         public void CalculateBestNoteLevel(InstrumentType instrumentType = InstrumentType.Piano)
         {
-            var originalLevel = 0;
-            var bestLevel = 0;
-            var bestRadio = 0.0;
+            var bestPianoLevel = 0;
+            var bestPianoRadio = 0.0;
+            var bestHornLevel = 0;
+            var bestHornRadio = 0.0;
 
-            if (instrumentType == InstrumentType.FrenchHorn)
+            for (int level = -24; level <= 24; level++)
             {
-                for (int level = -24; level <= 24; level++)
+                RefreshTracksByNoteLevel(level);
+                if (CanPlayNoteRadio > bestPianoRadio)
                 {
-                    RefreshFrenchHornTracksByNoteLevel(level);
-                    var radio = FrenchHornCanPlayNoteRadio;
-                    if (radio > bestRadio)
-                    {
-                        bestRadio = radio;
-                        bestLevel = level;
-                    }
+                    bestPianoRadio = CanPlayNoteRadio;
+                    bestPianoLevel = level;
                 }
-
-                RefreshFrenchHornTracksByNoteLevel(originalLevel);
-                FrenchHornBestNoteLevel = bestLevel;
-                FrenchHornBestNoteRadio = bestRadio;
-            }
-            else
-            {
-                for (int level = -24; level <= 24; level++)
+                if (FrenchHornCanPlayNoteRadio > bestHornRadio)
                 {
-                    RefreshTracksByNoteLevel(level, instrumentType);
-                    var radio = CanPlayNoteRadio;
-                    if (radio > bestRadio)
-                    {
-                        bestRadio = radio;
-                        bestLevel = level;
-                    }
+                    bestHornRadio = FrenchHornCanPlayNoteRadio;
+                    bestHornLevel = level;
                 }
-
-                RefreshTracksByNoteLevel(originalLevel, instrumentType);
-                BestNoteLevel = bestLevel;
-                BestNoteRadio = bestRadio;
             }
+
+            BestNoteLevel = bestPianoLevel;
+            BestNoteRadio = bestPianoRadio;
+            FrenchHornBestNoteLevel = bestHornLevel;
+            FrenchHornBestNoteRadio = bestHornRadio;
         }
 
         public void RefreshTracksByNoteLevel(int noteLevel, InstrumentType instrumentType = InstrumentType.Piano)
@@ -128,6 +113,7 @@ namespace MidiAutoPlayer.Core.Midi
             CanPlayTracks.ForEach(x => x.RefreshByNoteLevel(noteLevel, instrumentType));
             NoteNumber = CanPlayTracks.Sum(x => x.NoteNumber);
             CanPlayNoteNumber = CanPlayTracks.Sum(x => x.CanPlayNoteNumber);
+            FrenchHornNoteNumber = NoteNumber;
             FrenchHornCanPlayNoteNumber = CanPlayTracks.Sum(x => x.FrenchHornCanPlayNoteNumber);
             if (CanPlayTracks.Count > 0)
             {
@@ -139,15 +125,6 @@ namespace MidiAutoPlayer.Core.Midi
                 MaxNoteLevel = 0;
                 MinNoteLevel = 0;
             }
-        }
-
-        public void RefreshFrenchHornTracksByNoteLevel(int noteLevel)
-        {
-            foreach (var track in CanPlayTracks)
-            {
-                track.RefreshFrenchHornNoteLevel(noteLevel);
-            }
-            FrenchHornCanPlayNoteNumber = CanPlayTracks.Sum(x => x.FrenchHornCanPlayNoteNumber);
         }
 
     }

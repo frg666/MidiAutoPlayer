@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 using System.Windows;
 
 namespace MidiAutoPlayer
@@ -9,6 +10,9 @@ namespace MidiAutoPlayer
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+
+            // Register encoding provider for GBK/GB2312 support
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             AppDomain.CurrentDomain.UnhandledException += (s, args) =>
             {

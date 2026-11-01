@@ -1,4 +1,4 @@
-<Window x:Class="MidiAutoPlayer.MainWindow"
+<ui:FluentWindow x:Class="MidiAutoPlayer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -8,19 +8,81 @@
         xmlns:view="clr-namespace:MidiAutoPlayer.View"
         mc:Ignorable="d"
         Title="MidiAutoPlayer"
-        Height="600"
-        Width="900"
-        WindowStartupLocation="CenterScreen">
+        Height="782"
+        Width="1369"
+        MinHeight="782"
+        MinWidth="1369"
+        MaxHeight="782"
+        MaxWidth="1369"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        WindowBackdropType="Acrylic"
+        ExtendsContentIntoTitleBar="True"
+        Background="Transparent">
     <Grid>
-        <view:MidiView x:Name="MainView" />
-        <view:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
-        
-        <ui:Button x:Name="Button_Settings" 
-                   Content="设置" 
-                   VerticalAlignment="Top"
-                   HorizontalAlignment="Right"
-                   Margin="0,10,10,0"
-                   Appearance="Primary"
-                   Click="Button_Settings_Click" />
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 自定义标题栏：提供最小化/最大化/关闭按钮 -->
+        <ui:TitleBar x:Name="TitleBar"
+                     Grid.Row="0"
+                     Title="MidiAutoPlayer"
+                     Background="Transparent"
+                     ShowHelp="False"
+                     ShowMaximize="True"
+                     ShowMinimize="True"
+                     ShowClose="True"
+                     CloseClicked="TitleBar_CloseClicked"
+                     MaximizeClicked="TitleBar_MaximizeClicked"
+                     MinimizeClicked="TitleBar_MinimizeClicked" />
+
+        <!-- 主体：左侧导航三栏 + 右侧内容区 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧导航 -->
+            <ui:NavigationView x:Name="NavView"
+                               Grid.Column="0"
+                               PaneTitle="导航"
+                               IsPaneToggleVisible="False"
+                               Background="Transparent">
+                <ui:NavigationView.MenuItems>
+                    <ui:NavigationViewItem Content="MIDI播放器"
+                                           TargetPageTag="midi"
+                                           IsActive="True"
+                                           Click="NavItem_Click">
+                        <ui:NavigationViewItem.Icon>
+                            <ui:SymbolIcon Symbol="MusicNote124" />
+                        </ui:NavigationViewItem.Icon>
+                    </ui:NavigationViewItem>
+                    <ui:NavigationViewItem Content="DMS/TXT播放器"
+                                           TargetPageTag="dms"
+                                           Click="NavItem_Click">
+                        <ui:NavigationViewItem.Icon>
+                            <ui:SymbolIcon Symbol="DocumentBulletList24" />
+                        </ui:NavigationViewItem.Icon>
+                    </ui:NavigationViewItem>
+                    <ui:NavigationViewItem Content="设置"
+                                           TargetPageTag="settings"
+                                           Click="NavItem_Click">
+                        <ui:NavigationViewItem.Icon>
+                            <ui:SymbolIcon Symbol="Settings24" />
+                        </ui:NavigationViewItem.Icon>
+                    </ui:NavigationViewItem>
+                </ui:NavigationView.MenuItems>
+            </ui:NavigationView>
+
+            <!-- 内容区 -->
+            <Grid Grid.Column="1" Background="Transparent">
+                <view:MidiView x:Name="MidiView" IsDmsMode="False" />
+                <view:MidiView x:Name="DmsView" IsDmsMode="True" Visibility="Collapsed" />
+                <view:SettingsView x:Name="SettingsView" Visibility="Collapsed" />
+            </Grid>
+        </Grid>
     </Grid>
-</Window>
+</ui:FluentWindow>
