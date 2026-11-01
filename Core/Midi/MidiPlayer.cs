@@ -186,6 +186,15 @@ namespace MidiAutoPlayer.Core.Midi
 
         private Dictionary<ushort, CancellationTokenSource> _activeKeys = new Dictionary<ushort, CancellationTokenSource>();
 
+        // ============ 吉他和弦识别缓冲 ============
+        // 吉他模式下，NoteOn 先进入缓冲，由定时器在「和弦窗口」结束后统一 flush，
+        // 把窗口内快速出现的音归并成和弦键（匹配成功）或退回逐个单音键。
+        private readonly List<(int noteNumber, long timeMs)> _guitarChordBuffer = new List<(int, long)>();
+        private System.Threading.Timer? _guitarChordTimer;
+        private readonly object _guitarBufferLock = new object();
+        // 和弦识别窗口：毫秒。此窗口内到达的 NoteOn 视为「同时」参与和弦匹配。
+        private const int GuitarChordWindowMs = 100;
+
         private void _playback_Started(object? sender, EventArgs e)
         {
             Log("_playback_Started fired");
@@ -195,6 +204,7 @@ namespace MidiAutoPlayer.Core.Midi
         private void _playback_Stopped(object? sender, EventArgs e)
         {
             Log("_playback_Stopped fired");
+            FlushAndClearGuitarBuffer();
             foreach (var kvp in _activeKeys)
             {
                 SendKeyUp(kvp.Key, false);
@@ -206,12 +216,24 @@ namespace MidiAutoPlayer.Core.Midi
         private void _playback_Finished(object? sender, EventArgs e)
         {
             Log("_playback_Finished fired");
+            FlushAndClearGuitarBuffer();
             foreach (var kvp in _activeKeys)
             {
                 SendKeyUp(kvp.Key, false);
             }
             _activeKeys.Clear();
             Finished?.Invoke(this, e);
+        }
+
+        // 清空吉他和弦缓冲与定时器（播放停止/结束/切歌时调用）。
+        private void FlushAndClearGuitarBuffer()
+        {
+            lock (_guitarBufferLock)
+            {
+                _guitarChordBuffer.Clear();
+            }
+            _guitarChordTimer?.Dispose();
+            _guitarChordTimer = null;
         }
 
         private Playback? _playback;
@@ -270,6 +292,7 @@ namespace MidiAutoPlayer.Core.Midi
         {
             Log($"ChangeFileInfo called with autoPlay: {autoPlay}");
             if (info == null) return;
+            FlushAndClearGuitarBuffer();
             foreach (var kvp in _activeKeys)
             {
                 SendKeyUp(kvp.Key, false);
@@ -292,6 +315,7 @@ namespace MidiAutoPlayer.Core.Midi
                 Log("MidiFileInfo is null, cannot change");
                 return;
             }
+            FlushAndClearGuitarBuffer();
             foreach (var kvp in _activeKeys)
             {
                 SendKeyUp(kvp.Key, false);
@@ -343,7 +367,9 @@ namespace MidiAutoPlayer.Core.Midi
         {
             var dictionary = InstrumentType == InstrumentType.FrenchHorn 
                 ? Const.FrenchHornNoteToVisualKeyDictionary 
-                : Const.NoteToVisualKeyDictionary;
+                : InstrumentType == InstrumentType.Guitar
+                    ? Const.GuitarNoteToVisualKeyDictionary
+                    : Const.NoteToVisualKeyDictionary;
 
             if (e.Event.EventType == MidiEventType.NoteOn)
             {
@@ -356,6 +382,17 @@ namespace MidiAutoPlayer.Core.Midi
                 // 不做任何八度折返：整体移调 note + NoteLevel，
                 // 超出乐器音域的音直接丢弃（与命中率统计逻辑一致）。
                 var num = note.NoteNumber + NoteLevel;
+
+                // 吉他：先进入和弦缓冲，交由定时器窗口归并。
+                if (InstrumentType == InstrumentType.Guitar)
+                {
+                    lock (_guitarBufferLock)
+                    {
+                        _guitarChordBuffer.Add((num, Environment.TickCount64));
+                    }
+                    ResetGuitarChordTimer();
+                    return;
+                }
 
                 if (dictionary.ContainsKey(num))
                 {
@@ -395,6 +432,13 @@ namespace MidiAutoPlayer.Core.Midi
                 // 与 NoteOn 一致：整体移调，不做八度折返。
                 var num = note.NoteNumber + NoteLevel;
 
+                // 吉他：NoteOff 交由和弦缓冲 flush 后的单音松开逻辑处理，
+                // 此处不单独处理（避免与和弦归并冲突）。
+                if (InstrumentType == InstrumentType.Guitar)
+                {
+                    return;
+                }
+
                 if (dictionary.ContainsKey(num))
                 {
                     var keyCode = (ushort)dictionary[num];
@@ -408,6 +452,61 @@ namespace MidiAutoPlayer.Core.Midi
                     }
 
                     SendKeyUp(keyCode, PlayBackground);
+                }
+            }
+        }
+
+        // 重置吉他和弦窗口定时器：每次新音符进入缓冲后，重新计时一个窗口期。
+        private void ResetGuitarChordTimer()
+        {
+            _guitarChordTimer?.Dispose();
+            _guitarChordTimer = new System.Threading.Timer(_ => FlushGuitarChordBuffer(), null, GuitarChordWindowMs, System.Threading.Timeout.Infinite);
+        }
+
+        // 将缓冲窗口内的音符归并成和弦或单音，并触发按键。
+        private void FlushGuitarChordBuffer()
+        {
+            List<(int noteNumber, long timeMs)> buffered;
+            lock (_guitarBufferLock)
+            {
+                if (_guitarChordBuffer.Count == 0) return;
+                buffered = new List<(int, long)>(_guitarChordBuffer);
+                _guitarChordBuffer.Clear();
+            }
+
+            // 提取去重后的音高集合。
+            var noteSet = buffered.Select(x => x.noteNumber).Distinct().ToList();
+
+            // 尝试匹配和弦：音级集合（模 12）完全等于某个和弦的组成音级集合。
+            var pitchClasses = noteSet.Select(n => ((n % 12) + 12) % 12).OrderBy(x => x).ToList();
+            Const.GuitarChord? matched = Const.GuitarChords.FirstOrDefault(c =>
+            {
+                var cp = c.PitchClasses.Select(p => ((p % 12) + 12) % 12).OrderBy(x => x).ToList();
+                return cp.SequenceEqual(pitchClasses);
+            });
+
+            if (matched != null)
+            {
+                // 匹配到和弦：按对应和弦键（瞬时按下并松开，类似 SendKey）。
+                var chordKey = (ushort)matched.Key;
+                Log($"Guitar chord match: {matched.Name} -> key={chordKey}");
+                SendKey(chordKey, PlayBackground);
+            }
+            else
+            {
+                // 未匹配到和弦：退回逐个按单音键（若在下两排单音音域内）。
+                foreach (var n in noteSet)
+                {
+                    if (Const.GuitarNoteToVisualKeyDictionary.ContainsKey(n))
+                    {
+                        var keyCode = (ushort)Const.GuitarNoteToVisualKeyDictionary[n];
+                        Log($"Guitar single note fallback: note={n}, key={keyCode}");
+                        SendKey(keyCode, PlayBackground);
+                    }
+                    else
+                    {
+                        Log($"Guitar note not playable: note={n}");
+                    }
                 }
             }
         }

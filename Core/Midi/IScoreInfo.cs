@@ -17,6 +17,10 @@ namespace MidiAutoPlayer.Core.Midi
         double FrenchHornCanPlayNoteRadio { get; }
         int FrenchHornBestNoteLevel { get; set; }
         double FrenchHornBestNoteRadio { get; set; }
+        int GuitarCanPlayNoteNumber { get; set; }
+        double GuitarCanPlayNoteRadio { get; }
+        int GuitarBestNoteLevel { get; set; }
+        double GuitarBestNoteRadio { get; set; }
         void CalculateBestNoteLevel(InstrumentType instrumentType = InstrumentType.Piano);
         void RefreshTracksByNoteLevel(int noteLevel, InstrumentType instrumentType = InstrumentType.Piano);
     }

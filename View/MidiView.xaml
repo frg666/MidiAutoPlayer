@@ -203,6 +203,7 @@
                               VerticalAlignment="Center">
                         <ComboBoxItem Content="钢琴" />
                         <ComboBoxItem Content="圆号" />
+                        <ComboBoxItem Content="吉他" />
                     </ComboBox>
                     <TextBlock Grid.Row="3"
                                Grid.Column="0"
@@ -285,6 +286,14 @@
                     <TextBlock Text="{Binding SelectedMidiFile.FrenchHornBestNoteRadio, StringFormat=P1}" />
                     <TextBlock Text="　移调" />
                     <TextBlock Text="{Binding SelectedMidiFile.FrenchHornBestNoteLevel, StringFormat=+0;-0;0}" />
+                </StackPanel>
+                <StackPanel Margin="0,4,0,0" Orientation="Horizontal">
+                    <TextBlock Text="吉他(14键+和弦) 命中率：" FontWeight="Bold" />
+                    <TextBlock Text="{Binding SelectedMidiFile.GuitarCanPlayNoteRadio, StringFormat=P1}" />
+                    <TextBlock Text="　最佳：" />
+                    <TextBlock Text="{Binding SelectedMidiFile.GuitarBestNoteRadio, StringFormat=P1}" />
+                    <TextBlock Text="　移调" />
+                    <TextBlock Text="{Binding SelectedMidiFile.GuitarBestNoteLevel, StringFormat=+0;-0;0}" />
                 </StackPanel>
                 <TextBlock Margin="0,10,0,0" FontSize="16" Text="音轨信息" />
             </StackPanel>

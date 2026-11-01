@@ -4,5 +4,6 @@ namespace MidiAutoPlayer.Core.MusicGame
     {
         Piano = 0,
         FrenchHorn = 1,
+        Guitar = 2,
     }
 }

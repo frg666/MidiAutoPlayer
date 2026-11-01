@@ -25,6 +25,11 @@ namespace MidiAutoPlayer.Core.Midi
         public int FrenchHornBestNoteLevel { get; set; }
         public double FrenchHornBestNoteRadio { get; set; }
 
+        public int GuitarCanPlayNoteNumber { get; set; }
+        public double GuitarCanPlayNoteRadio => NoteNumber > 0 ? (double)GuitarCanPlayNoteNumber / NoteNumber : 0;
+        public int GuitarBestNoteLevel { get; set; }
+        public double GuitarBestNoteRadio { get; set; }
+
         private int _bpm = 80;
 
         private static readonly int[] BaseOffset = { 0, 0, 2, 4, 5, 7, 9, 11 };
@@ -563,7 +568,7 @@ namespace MidiAutoPlayer.Core.Midi
         private void CalculateNoteStats()
         {
             if (MidiFile == null) return;
-            int totalNotes = 0, playableNotes = 0, hornPlayableNotes = 0;
+            int totalNotes = 0, playableNotes = 0, hornPlayableNotes = 0, guitarPlayableNotes = 0;
             foreach (var trackChunk in MidiFile.GetTrackChunks())
             {
                 foreach (var midiEvent in trackChunk.Events)
@@ -573,12 +578,14 @@ namespace MidiAutoPlayer.Core.Midi
                         totalNotes++;
                         if (Const.NoteToVisualKeyDictionary.ContainsKey(noteOn.NoteNumber)) playableNotes++;
                         if (Const.FrenchHornNoteToVisualKeyDictionary.ContainsKey(noteOn.NoteNumber)) hornPlayableNotes++;
+                        if (Const.GuitarNoteToVisualKeyDictionary.ContainsKey(noteOn.NoteNumber)) guitarPlayableNotes++;
                     }
                 }
             }
             NoteNumber = totalNotes;
             CanPlayNoteNumber = playableNotes;
             FrenchHornCanPlayNoteNumber = hornPlayableNotes;
+            GuitarCanPlayNoteNumber = guitarPlayableNotes;
         }
 
         public void CalculateBestNoteLevel(InstrumentType instrumentType = InstrumentType.Piano)
@@ -587,22 +594,27 @@ namespace MidiAutoPlayer.Core.Midi
             var bestPianoRadio = 0.0;
             var bestHornLevel = 0;
             var bestHornRadio = 0.0;
+            var bestGuitarLevel = 0;
+            var bestGuitarRadio = 0.0;
             for (int level = -24; level <= 24; level++)
             {
                 RefreshTracksByNoteLevel(level);
                 if (CanPlayNoteRadio > bestPianoRadio) { bestPianoRadio = CanPlayNoteRadio; bestPianoLevel = level; }
                 if (FrenchHornCanPlayNoteRadio > bestHornRadio) { bestHornRadio = FrenchHornCanPlayNoteRadio; bestHornLevel = level; }
+                if (GuitarCanPlayNoteRadio > bestGuitarRadio) { bestGuitarRadio = GuitarCanPlayNoteRadio; bestGuitarLevel = level; }
             }
             BestNoteLevel = bestPianoLevel;
             BestNoteRadio = bestPianoRadio;
             FrenchHornBestNoteLevel = bestHornLevel;
             FrenchHornBestNoteRadio = bestHornRadio;
+            GuitarBestNoteLevel = bestGuitarLevel;
+            GuitarBestNoteRadio = bestGuitarRadio;
         }
 
         public void RefreshTracksByNoteLevel(int noteLevel, InstrumentType instrumentType = InstrumentType.Piano)
         {
             if (MidiFile == null) return;
-            int totalNotes = 0, playableNotes = 0, hornPlayableNotes = 0;
+            int totalNotes = 0, playableNotes = 0, hornPlayableNotes = 0, guitarPlayableNotes = 0;
             foreach (var trackChunk in MidiFile.GetTrackChunks())
             {
                 foreach (var midiEvent in trackChunk.Events)
@@ -613,12 +625,14 @@ namespace MidiAutoPlayer.Core.Midi
                         int noteNum = noteOn.NoteNumber + noteLevel;
                         if (Const.NoteToVisualKeyDictionary.ContainsKey(noteNum)) playableNotes++;
                         if (Const.FrenchHornNoteToVisualKeyDictionary.ContainsKey(noteNum)) hornPlayableNotes++;
+                        if (Const.GuitarNoteToVisualKeyDictionary.ContainsKey(noteNum)) guitarPlayableNotes++;
                     }
                 }
             }
             NoteNumber = totalNotes;
             CanPlayNoteNumber = playableNotes;
             FrenchHornCanPlayNoteNumber = hornPlayableNotes;
+            GuitarCanPlayNoteNumber = guitarPlayableNotes;
         }
     }
 }

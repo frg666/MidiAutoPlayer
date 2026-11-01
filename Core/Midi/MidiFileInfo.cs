@@ -43,6 +43,16 @@ namespace MidiAutoPlayer.Core.Midi
 
         public double FrenchHornBestNoteRadio { get; set; }
 
+        public int GuitarNoteNumber { get; set; }
+
+        public int GuitarCanPlayNoteNumber { get; set; }
+
+        public double GuitarCanPlayNoteRadio => GuitarNoteNumber > 0 ? (double)GuitarCanPlayNoteNumber / GuitarNoteNumber : 0;
+
+        public int GuitarBestNoteLevel { get; set; }
+
+        public double GuitarBestNoteRadio { get; set; }
+
         public MidiFileInfo(string path)
         {
             FilePath = path;
@@ -67,6 +77,8 @@ namespace MidiAutoPlayer.Core.Midi
             CanPlayNoteNumber = CanPlayTracks.Sum(x => x.CanPlayNoteNumber);
             FrenchHornNoteNumber = NoteNumber;
             FrenchHornCanPlayNoteNumber = CanPlayTracks.Sum(x => x.FrenchHornCanPlayNoteNumber);
+            GuitarNoteNumber = NoteNumber;
+            GuitarCanPlayNoteNumber = CanPlayTracks.Sum(x => x.GuitarCanPlayNoteNumber);
             if (CanPlayTracks.Count > 0)
             {
                 MaxNoteLevel = CanPlayTracks.Max(x => x.MaxNoteLevel);
@@ -79,13 +91,15 @@ namespace MidiAutoPlayer.Core.Midi
             }
         }
 
-        // 同时计算钢琴(21键)与圆号(14键)两套最佳移调及命中率。
+        // 同时计算钢琴(21键)、圆号(14键)与吉他(14单音)三套最佳移调及命中率。
         public void CalculateBestNoteLevel(InstrumentType instrumentType = InstrumentType.Piano)
         {
             var bestPianoLevel = 0;
             var bestPianoRadio = 0.0;
             var bestHornLevel = 0;
             var bestHornRadio = 0.0;
+            var bestGuitarLevel = 0;
+            var bestGuitarRadio = 0.0;
 
             for (int level = -24; level <= 24; level++)
             {
@@ -100,12 +114,19 @@ namespace MidiAutoPlayer.Core.Midi
                     bestHornRadio = FrenchHornCanPlayNoteRadio;
                     bestHornLevel = level;
                 }
+                if (GuitarCanPlayNoteRadio > bestGuitarRadio)
+                {
+                    bestGuitarRadio = GuitarCanPlayNoteRadio;
+                    bestGuitarLevel = level;
+                }
             }
 
             BestNoteLevel = bestPianoLevel;
             BestNoteRadio = bestPianoRadio;
             FrenchHornBestNoteLevel = bestHornLevel;
             FrenchHornBestNoteRadio = bestHornRadio;
+            GuitarBestNoteLevel = bestGuitarLevel;
+            GuitarBestNoteRadio = bestGuitarRadio;
         }
 
         public void RefreshTracksByNoteLevel(int noteLevel, InstrumentType instrumentType = InstrumentType.Piano)
@@ -115,6 +136,8 @@ namespace MidiAutoPlayer.Core.Midi
             CanPlayNoteNumber = CanPlayTracks.Sum(x => x.CanPlayNoteNumber);
             FrenchHornNoteNumber = NoteNumber;
             FrenchHornCanPlayNoteNumber = CanPlayTracks.Sum(x => x.FrenchHornCanPlayNoteNumber);
+            GuitarNoteNumber = NoteNumber;
+            GuitarCanPlayNoteNumber = CanPlayTracks.Sum(x => x.GuitarCanPlayNoteNumber);
             if (CanPlayTracks.Count > 0)
             {
                 MaxNoteLevel = CanPlayTracks.Max(x => x.MaxNoteLevel);

@@ -24,6 +24,10 @@ namespace MidiAutoPlayer.Core.Midi
 
         public double FrenchHornCanPlayNoteRadio => NoteNumber > 0 ? (double)FrenchHornCanPlayNoteNumber / NoteNumber : 0;
 
+        public int GuitarCanPlayNoteNumber { get; set; }
+
+        public double GuitarCanPlayNoteRadio => NoteNumber > 0 ? (double)GuitarCanPlayNoteNumber / NoteNumber : 0;
+
         public int MaxNoteLevel { get; set; }
 
         public int MinNoteLevel { get; set; }
@@ -48,13 +52,15 @@ namespace MidiAutoPlayer.Core.Midi
             RefreshByNoteLevel(0);
         }
 
-        // 一次移调，同时刷新钢琴(21键)与圆号(14键)两套可弹数与命中率。
+        // 一次移调，同时刷新钢琴(21键)、圆号(14键)与吉他(14单音)三套可弹数与命中率。
         public void RefreshByNoteLevel(int noteLevel, InstrumentType instrumentType = InstrumentType.Piano)
         {
             // 钢琴：NoteToVisualKeyDictionary（21 键）
             CanPlayNoteNumber = PlayableNoteOns.Count(x => Const.NoteToVisualKeyDictionary.ContainsKey(x.NoteNumber + noteLevel));
             // 圆号：FrenchHornNoteToVisualKeyDictionary（14 键）
             FrenchHornCanPlayNoteNumber = PlayableNoteOns.Count(x => Const.FrenchHornNoteToVisualKeyDictionary.ContainsKey(x.NoteNumber + noteLevel));
+            // 吉他：GuitarNoteToVisualKeyDictionary（14 单音键）
+            GuitarCanPlayNoteNumber = PlayableNoteOns.Count(x => Const.GuitarNoteToVisualKeyDictionary.ContainsKey(x.NoteNumber + noteLevel));
 
             if (CanBeChecked)
             {

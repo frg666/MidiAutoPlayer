@@ -92,9 +92,12 @@ namespace MidiAutoPlayer.ViewModel
         // 当前乐器对应的命中率（排序/搜索都基于它）
         private double GetHitRate(IScoreInfo info)
         {
-            return InstrumentType == InstrumentType.FrenchHorn
-                ? info.FrenchHornCanPlayNoteRadio
-                : info.CanPlayNoteRadio;
+            return InstrumentType switch
+            {
+                InstrumentType.FrenchHorn => info.FrenchHornCanPlayNoteRadio,
+                InstrumentType.Guitar => info.GuitarCanPlayNoteRadio,
+                _ => info.CanPlayNoteRadio,
+            };
         }
 
         private IEnumerable<IScoreInfo> SortAndFilter(IEnumerable<IScoreInfo> source)
@@ -418,26 +421,32 @@ namespace MidiAutoPlayer.ViewModel
 
             await Task.Run(() =>
             {
-                // 同时计算钢琴(21键)与圆号(14键)两套最佳移调及命中率
+                // 同时计算钢琴(21键)、圆号(14键)与吉他(14单音)三套最佳移调及命中率
                 SelectedMidiFile.CalculateBestNoteLevel();
             });
 
-            // 两套最佳移调分别持久化：钢琴 key=Name_0，圆号 key=Name_1
+            // 三套最佳移调分别持久化：钢琴 key=Name_0，圆号 key=Name_1，吉他 key=Name_2
             var pianoKey = $"{SelectedMidiFile.Name}_{(int)InstrumentType.Piano}";
             var hornKey = $"{SelectedMidiFile.Name}_{(int)InstrumentType.FrenchHorn}";
+            var guitarKey = $"{SelectedMidiFile.Name}_{(int)InstrumentType.Guitar}";
             _noteLevelSettings[pianoKey] = SelectedMidiFile.BestNoteLevel;
             _noteLevelSettings[hornKey] = SelectedMidiFile.FrenchHornBestNoteLevel;
+            _noteLevelSettings[guitarKey] = SelectedMidiFile.GuitarBestNoteLevel;
             SaveSettings();
 
             // 当前乐器的移调值设为对应的最佳移调（通过 NoteLevel setter 同步到播放器）
-            NoteLevel = InstrumentType == InstrumentType.FrenchHorn
-                ? SelectedMidiFile.FrenchHornBestNoteLevel
-                : SelectedMidiFile.BestNoteLevel;
+            NoteLevel = InstrumentType switch
+            {
+                InstrumentType.FrenchHorn => SelectedMidiFile.FrenchHornBestNoteLevel,
+                InstrumentType.Guitar => SelectedMidiFile.GuitarBestNoteLevel,
+                _ => SelectedMidiFile.BestNoteLevel,
+            };
 
             OnPropertyChanged("NoteLevel");
             OnPropertyChanged("CanAutoAdjust");
             OnPropertyChanged("BestNoteRadio");
             OnPropertyChanged("FrenchHornBestNoteRadio");
+            OnPropertyChanged("GuitarBestNoteRadio");
         }
 
         public void LoadSettings()
